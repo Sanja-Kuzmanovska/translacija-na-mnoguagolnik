@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="mk">
+<head>
+<meta charset="UTF-8">
+<title>📐 ТРАНСЛАЦИЈА НА МНОГУАГОЛНИК</title>
+<style>
+body {font-family:Arial, "Segoe UI", sans-serif; background:#f0f8ff; margin:0; padding:20px; text-align:center;}
+h1 {color:#1a5276;}
+canvas {border:5px solid #1a5276; background:#fff; box-shadow:0 8px 25px rgba(0,0,0,0.12); border-radius:8px;}
+.controls {margin:25px auto; max-width:720px; background:#fff; padding:25px; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.1);}
+input[type=number] {width:90px; font-size:24px; text-align:center; padding:6px; margin:0 12px; border:2px solid #3498db; border-radius:6px;}
+button {padding:14px 32px; font-size:20px; margin:12px 8px; border:none; border-radius:10px; cursor:pointer; color:white;}
+button.blue {background:#3498db;}
+button.green {background:#27ae60;}
+button.orange {background:#e67e22;}
+button.purple {background:#8e44ad;}
+#task {font-size:23px; font-weight:bold; margin:25px 0; min-height:100px; color:#1a5276; line-height:1.3;}
+#message {font-size:27px; margin:25px 0; min-height:70px; line-height:1.4;}
+#score {font-size:22px; font-weight:bold; color:#27ae60; margin:10px 0;}
+#info {margin:20px auto; max-width:680px;}
+table {margin:15px auto; border-collapse:collapse; font-size:18px;}
+th, td {border:2px solid #3498db; padding:10px 14px;}
+th {background:#3498db; color:white;}
+.footer {font-size:15px; color:#555; margin-top:30px;}
+.level-up {font-size:28px; font-weight:bold; color:#e67e22; margin:20px 0;}
+.wrong {color:#e74c3c; font-weight:bold;}
+</style>
+</head>
+<body>
+<h1>📐 ТРАНСЛАЦИЈА НА МНОГУАГОЛНИК</h1>
+
+<div id="score">Поени: 0 | Ниво: 1</div>
+
+<canvas id="canvas" width="720" height="540"></canvas>
+
+<div class="controls">
+  <div id="task"></div>
+  
+  <div>
+    <label>x = <input type="number" id="xIn" step="1" value="0"></label>
+    <label>y = <input type="number" id="yIn" step="1" value="0"></label>
+  </div>
+  
+  <button class="blue" onclick="applyTranslation()">Примени</button>
+  <button class="green" onclick="checkAnswer()">Провери ✅</button>
+  <button class="orange" onclick="newTask()">Следна задача</button>
+  <button class="purple" onclick="sendResult()">📤 Испрати резултат кај наставничката</button>
+</div>
+
+<div id="message"></div>
+<div id="info"></div>
+
+<p class="footer">Автор: Сања Кузмановска</p>
+
+<script>
+// ЗВУК – АПЛАУЗ
+const correctSound = new Audio("https://assets.mixkit.co/active_storage/sfx/1994/1994-preview.mp3");
+
+// ПОЕНИ И НИВО
+let score = 0;
+let level = 1;
+let tasksCompletedInLevel = 0; // 0 → 1 → 2 → качување
+let playerName = "";
+
+function askForName() {
+  playerName = prompt("Внеси го твоето име:", "");
+  if (!playerName || playerName.trim() === "") playerName = "Анонимен ученик";
+}
+
+function updateScore() {
+  document.getElementById('score').innerHTML = `Поени: ${score} | Ниво: ${level}`;
+}
+
+const shapes = [
+  {points: [{x:-4,y:-3},{x:4,y:-3},{x:0,y:5}], name:"триаголник"},
+  {points: [{x:-5,y:-2},{x:5,y:-2},{x:5,y:3},{x:-5,y:3}], name:"правоаголник"},
+  {points: [{x:-4,y:-3},{x:4,y:-3},{x:4,y:1},{x:0,y:6},{x:-4,y:1}], name:"петаголник"},
+  {points: [{x:4,y:0},{x:2,y:3},{x:-2,y:3},{x:-4,y:0},{x:-2,y:-3},{x:2,y:-3}], name:"шестоаголник"}
+];
+
+let original = [];
+let labels = [];
+let dx = 0, dy = 0;
+let currentTask = null;
+
+function generateShape() {
+  const s = shapes[Math.floor(Math.random()*shapes.length)];
+  original = s.points.map(p => ({...p}));
+  labels = "ABCDEF".split('').slice(0, original.length);
+}
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const unit = 38;
+const ox = canvas.width / 2;
+const oy = canvas.height / 2 - 20;
+
+function screenX(x) { return ox + x*unit; }
+function screenY(y) { return oy - y*unit; }
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth=1;
+  for(let i=-15;i<=15;i++){
+    ctx.beginPath(); ctx.moveTo(screenX(i),0); ctx.lineTo(screenX(i),canvas.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,screenY(i)); ctx.lineTo(canvas.width,screenY(i)); ctx.stroke();
+  }
+  ctx.strokeStyle = '#2c3e50'; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.moveTo(0,oy); ctx.lineTo(canvas.width,oy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox,0); ctx.lineTo(ox,canvas.height); ctx.stroke();
+
+  ctx.fillStyle = 'rgba(149,165,166,0.25)'; ctx.strokeStyle = '#95a5a6';
+  ctx.beginPath();
+  ctx.moveTo(screenX(original[0].x), screenY(original[0].y));
+  for(let i=1;i<original.length;i++) ctx.lineTo(screenX(original[i].x), screenY(original[i].y));
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  let moved = original.map(p=>({x:p.x+dx, y:p.y+dy}));
+  ctx.fillStyle = '#3498db'; ctx.strokeStyle = '#2c3e50'; ctx.lineWidth=5;
+  ctx.beginPath();
+  ctx.moveTo(screenX(moved[0].x), screenY(moved[0].y));
+  for(let i=1;i<moved.length;i++) ctx.lineTo(screenX(moved[i].x), screenY(moved[i].y));
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  for(let i=0;i<moved.length;i++){
+    let p = moved[i];
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.arc(screenX(p.x), screenY(p.y),16,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#1a5276'; ctx.font='bold 22px Arial';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(labels[i], screenX(p.x), screenY(p.y));
+  }
+}
+
+function updateTable(show = true) {
+  if (!show) {
+    document.getElementById('info').innerHTML = '<p class="note">Во овој тип внесуваш нови координати на една точка.</p>';
+    return;
+  }
+  let html = '<table><tr><th>Точка</th><th>Оригинал</th><th>По транслација</th></tr>';
+  let moved = original.map(p=>({x:p.x+dx, y:p.y+dy}));
+  for(let i=0;i<original.length;i++){
+    html += `<tr><td><b>${labels[i]}</b></td><td>(${original[i].x}, ${original[i].y})</td><td>(${moved[i].x}, ${moved[i].y})</td></tr>`;
+  }
+  html += '</table>';
+  document.getElementById('info').innerHTML = html;
+}
+
+function newTask() {
+  generateShape();
+  dx = dy = 0;
+  document.getElementById('xIn').value = 0;
+  document.getElementById('yIn').value = 0;
+  document.getElementById('message').innerHTML = '';
+
+  const maxVector = 4 + level * 2;
+  const type = tasksCompletedInLevel % 3;
+  const idx = Math.floor(Math.random()*labels.length);
+  const letter = labels[idx];
+  let taskText = '';
+
+  if(type === 0){
+    const tx = Math.round(Math.random()* (maxVector*2) - maxVector) + original[idx].x;
+    const ty = Math.round(Math.random()* (maxVector*2) - maxVector) + original[idx].y;
+    taskText = `Ниво ${level} - Задача 1/3: Помести го многуаголникот така што темето <b>${letter}</b> да заврши на <b>(${tx}, ${ty})</b><br><small>Внеси го векторот (x, y)</small>`;
+    currentTask = {type:0, idx, targetX:tx, targetY:ty, letter};
+    updateTable(true);
+  }
+  else if(type === 1){
+    let rdx = Math.round(Math.random()* (maxVector*2) - maxVector);
+    let rdy = Math.round(Math.random()* (maxVector*2) - maxVector);
+    while(rdx===0 && rdy===0){ rdx = Math.round(Math.random()*(maxVector*2)-maxVector); rdy = Math.round(Math.random()*(maxVector*2)-maxVector); }
+    const txtX = rdx >= 0 ? `надесно ${rdx}` : `налево ${-rdx}`;
+    const txtY = rdy >= 0 ? `нагоре ${rdy}` : `надолу ${-rdy}`;
+    taskText = `Ниво ${level} - Задача 2/3: Помести го многуаголникот <b>${txtX} единици</b> и <b>${txtY} единици</b><br><small>Внеси го векторот (x, y)</small>`;
+    currentTask = {type:1, dx:rdx, dy:rdy};
+    updateTable(true);
+  }
+  else{
+    let rdx = Math.round(Math.random()* (maxVector*2) - maxVector);
+    let rdy = Math.round(Math.random()* (maxVector*2) - maxVector);
+    while(rdx===0 && rdy===0){ rdx = Math.round(Math.random()*(maxVector*2)-maxVector); rdy = Math.round(Math.random()*(maxVector*2)-maxVector); }
+    const newX = original[idx].x + rdx;
+    const newY = original[idx].y + rdy;
+    taskText = `Ниво ${level} - Задача 3/3: Ако го поместиш многуаголникот за <b>(${rdx}, ${rdy})</b>, каде завршува точка <b>${letter}</b> ?<br><small style="color:#e74c3c">Внеси ги новите координати на точка ${letter}</small>`;
+    currentTask = {type:2, idx, expectX:newX, expectY:newY, letter};
+    updateTable(false);
+  }
+
+  document.getElementById('task').innerHTML = taskText;
+  draw();
+}
+
+function applyTranslation() {
+  dx = Number(document.getElementById('xIn').value) || 0;
+  dy = Number(document.getElementById('yIn').value) || 0;
+  draw();
+  if (currentTask && currentTask.type !== 2) updateTable(true);
+}
+
+function checkAnswer() {
+  if (!currentTask) return;
+
+  let msg = '';
+  let correct = false;
+
+  if (currentTask.type === 0) {
+    const requiredDx = currentTask.targetX - original[currentTask.idx].x;
+    const requiredDy = currentTask.targetY - original[currentTask.idx].y;
+    if (Math.abs(dx - requiredDx) < 0.5 && Math.abs(dy - requiredDy) < 0.5) {
+      correct = true;
+      msg = `🎉 Точно!`;
+    } else {
+      msg = `Не... Треба вектор (${requiredDx}, ${requiredDy})`;
+    }
+  }
+  else if (currentTask.type === 1) {
+    if (Math.abs(dx - currentTask.dx) < 0.5 && Math.abs(dy - currentTask.dy) < 0.5) {
+      correct = true;
+      msg = `🎉 Точно!`;
+    } else {
+      msg = `Не... Треба вектор (${currentTask.dx}, ${currentTask.dy})`;
+    }
+  }
+  else if (currentTask.type === 2) {
+    const enteredX = Number(document.getElementById('xIn').value);
+    const enteredY = Number(document.getElementById('yIn').value);
+    if (Math.abs(enteredX - currentTask.expectX) < 0.5 && Math.abs(enteredY - currentTask.expectY) < 0.5) {
+      correct = true;
+      msg = `🎉 Точно! Точка ${currentTask.letter} завршува на (${currentTask.expectX}, ${currentTask.expectY})`;
+    } else {
+      msg = `Не... Треба (${currentTask.expectX}, ${currentTask.expectY})`;
+    }
+  }
+
+  document.getElementById('message').innerHTML = msg;
+
+  if (correct) {
+    correctSound.currentTime = 0;
+    correctSound.play();
+
+    score += 10;
+    tasksCompletedInLevel++;
+
+    updateScore();
+
+    if (tasksCompletedInLevel >= 3) {
+      level++;
+      tasksCompletedInLevel = 0;
+      updateScore();
+      document.getElementById('message').innerHTML += '<br><div class="level-up">Браво! Премина на следно ниво!</div>';
+    }
+
+    setTimeout(() => newTask(), 2500);
+  } else {
+    document.getElementById('message').innerHTML += '<br><span class="wrong">Обиди се повторно!</span>';
+  }
+}
+
+function sendResult() {
+  if (score === 0) {
+    alert("Сеуште немаш поени!");
+    return;
+  }
+  const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLScTplPge71wH4lbZBMRZRHvVrbis6n0qoM4wSgQbG-Iuv3NZQ/viewform";
+  const finalUrl = `${formUrl}?usp=pp_url&entry.644024955=${encodeURIComponent(playerName)}&entry.1827131767=${score}&entry.1359429438=${level}`;
+  window.open(finalUrl, "_blank");
+  alert("Резултатот е испратен кај наставничката! Браво!");
+}
+
+// Почеток
+askForName();
+newTask();
+updateScore();
+</script>
+</body>
+</html>
